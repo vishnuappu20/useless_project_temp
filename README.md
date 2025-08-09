@@ -76,7 +76,7 @@ For Software:
 <img width="3188" height="1202" alt="frame (3)" src="screenshots/s2 home page down part.png" />
 <img width="3188" height="1202" alt="frame (3)" src="screenshots/s3 main page.png" />
 <img width="3188" height="1202" alt="frame (3)" src="screenshots/s4 main after drawing.png" />
-<img width="3188" height="1202" alt="frame (3)" src="https://github.com/user-attachments/assets/517ad8e9-ad22-457d-9538-a9e62d137cd7" />
+<img width="3188" height="1202" alt="frame (3)" src="screenshots/s4 main page diplaying switches.png" />
 *Add caption explaining what this shows*
 
 ![Screenshot2](Add screenshot 2 here with proper name)
