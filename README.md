@@ -25,27 +25,52 @@
 ## Technical Details
 ### Technologies/Components Used
 For Software:
-- [Languages used]
-- [Frameworks used]
-- [Libraries used]
-- [Tools used]
-
-For Hardware:
-- [List main components]
-- [List specifications]
-- [List tools required]
-
+- [Python (for backend logic in app.py)
+HTML (for web page templates in templates/)
+JavaScript (for client-side scripting in static/script.js)
+CSS (likely used within your HTML files for styling)
+Flask (Python web framework)]
+- Frameworks used: Flask (Python web framework)
+- Libraries used: OpenCV (cv2), NumPy, base64, re, random, math, collections (Counter)
+- Tools used: Python, Flask development server, web browser (for testing), image files (for shape detection)
+  
 ### Implementation
-For Software:
+For Software:The backend is implemented using Flask, a lightweight Python web framework. The main logic resides in `app.py`, which handles HTTP requests, renders HTML templates, and processes images for shape detection using OpenCV and NumPy. Users interact with the web interface via HTML pages (`index.html`, `landing.html`), and client-side interactivity is managed by JavaScript (`static/script.js`).
+
+The shape detection works by drwing a shape, which is then analyzed on the server to identify geometric shapes. Results and fun, sarcastic comments are displayed to the user.
+
 # Installation
-[commands]
+. Clone the repository:
+   ```
+   git clone <repo-url>
+   ```
+2. Navigate to the project directory:
+   ```
+   cd useless_project_temp
+   ```
+3. Install required Python packages:
+   ```
+   pip install flask opencv-python numpy
+   ```
+
 
 # Run
-[commands]
+1. Start the Flask development server:
 
+   python app.py
+   
+2. Open your web browser and go to:
+   
+   http://127.0.0.1:5000/
+   
 ### Project Documentation
 For Software:
-
+ The project consists of a Flask backend (`app.py`) that handles image uploads and shape detection using OpenCV and NumPy.
+- HTML templates (`index.html`, `landing.html`) provide the user interface, styled with CSS and enhanced with JavaScript (`static/script.js`).
+- Users can draw shapes, and the backend processes these to detect shapes, returning results and fun comments.
+- The README includes installation, run instructions, and technical details for easy setup and understanding.
+- 
+  
 # Screenshots (Add at least 3)
 ![Screenshot1](Add screenshot 1 here with proper name)
 *Add caption explaining what this shows*
