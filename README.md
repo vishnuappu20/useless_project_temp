@@ -5,7 +5,7 @@
 
 
 ## Basic Details
-### Team Name: [Name]
+### Team Name: HACK ACADEMIA 3.0
 
 
 ### Team Members
