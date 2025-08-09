@@ -400,195 +400,64 @@ def detect_heart_optimized(preprocessed):
     
     return None
 
-def advanced_preprocessing(gray):
-    """Multi-stage preprocessing for optimal shape detection"""
-    # Stage 1: Noise reduction with bilateral filter
-    denoised = cv2.bilateralFilter(gray, 9, 75, 75)
-    
-    # Stage 2: Adaptive histogram equalization
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    enhanced = clahe.apply(denoised)
-    
-    # Stage 3: Multi-scale Gaussian blur
-    blur1 = cv2.GaussianBlur(enhanced, (3, 3), 0)
-    blur2 = cv2.GaussianBlur(enhanced, (7, 7), 0)
-    combined_blur = cv2.addWeighted(blur1, 0.7, blur2, 0.3, 0)
-    
-    # Stage 4: Advanced thresholding with multiple methods
-    # Otsu's thresholding
-    _, thresh_otsu = cv2.threshold(combined_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    
-    # Adaptive thresholding
-    thresh_adaptive = cv2.adaptiveThreshold(combined_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-    
-    # Combine thresholding methods
-    thresh_combined = cv2.bitwise_or(thresh_otsu, thresh_adaptive)
-    
-    # Stage 5: Advanced morphological operations
-    # Multiple kernel sizes for different shape scales
-    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    
-    # Close small gaps
-    closed = cv2.morphologyEx(thresh_combined, cv2.MORPH_CLOSE, kernel_small)
-    # Remove small noise
-    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_small)
-    # Fill holes
-    filled = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_medium)
-    
-    return filled
+def get_confidence_emoji(confidence):
+    """Return emoji based on confidence level"""
+    if confidence >= 0.9:
+        return "🎯"
+    elif confidence >= 0.8:
+        return "✨"
+    elif confidence >= 0.7:
+        return "👍"
+    elif confidence >= 0.6:
+        return "🤔"
+    else:
+        return "❓"
 
-def detect_shapes_by_contours(preprocessed):
-    """Advanced contour-based shape detection"""
-    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    shapes = []
-    
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area < 300:  # Reduced threshold for better sensitivity
-            continue
-        
-        # Enhanced geometric analysis
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0:
-            continue
-            
-        # Multiple approximation levels for better accuracy
-        approx_loose = cv2.approxPolyDP(cnt, 0.04 * perimeter, True)
-        approx_tight = cv2.approxPolyDP(cnt, 0.02 * perimeter, True)
-        approx_very_tight = cv2.approxPolyDP(cnt, 0.01 * perimeter, True)
-        
-        # Comprehensive geometric properties
-        x, y, w, h = cv2.boundingRect(cnt)
-        aspect_ratio = float(w) / h
-        
-        # Advanced shape metrics
-        hull = cv2.convexHull(cnt)
-        hull_area = cv2.contourArea(hull)
-        solidity = float(area) / hull_area if hull_area > 0 else 0
-        
-        # Circularity and compactness
-        circularity = 4 * math.pi * area / (perimeter * perimeter)
-        compactness = perimeter * perimeter / area
-        
-        # Moments for advanced analysis
-        moments = cv2.moments(cnt)
-        if moments["m00"] != 0:
-            hu_moments = cv2.HuMoments(moments)
-        else:
-            hu_moments = np.zeros(7)
-        
-        # Classify shape with multiple criteria
-        shape_result = classify_ultra_advanced_shape(
-            approx_loose, approx_tight, approx_very_tight,
-            aspect_ratio, circularity, solidity, compactness,
-            area, cnt, hu_moments
-        )
-        
-        if shape_result:
-            shapes.append(shape_result)
-    
-    return shapes
+def parse_base64_image(data_url):
+    img_str = re.search(r'base64,(.*)', data_url).group(1)
+    img_bytes = base64.b64decode(img_str)
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    return img
 
-def detect_shapes_by_hough_transforms(preprocessed):
-    """Hough transform-based detection for circles and lines"""
-    shapes = []
-    
-    # Hough Circle Transform for perfect circle detection
-    circles = cv2.HoughCircles(
-        preprocessed, cv2.HOUGH_GRADIENT, dp=1, minDist=30,
-        param1=50, param2=30, minRadius=10, maxRadius=200
-    )
-    
-    if circles is not None:
-        circles = np.round(circles[0, :]).astype("int")
-        for (x, y, r) in circles:
-            shapes.append({
-                'name': 'Circle',
-                'confidence': 0.95,
-                'center': (x, y),
-                'radius': r,
-                'method': 'hough'
-            })
-    
-    # Hough Line Transform for detecting straight edges
-    edges = cv2.Canny(preprocessed, 50, 150, apertureSize=3)
-    lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
-    
-    if lines is not None and len(lines) >= 3:
-        # Analyze line patterns for polygon detection
-        line_angles = []
-        for line in lines:
-            rho, theta = line[0]
-            angle = theta * 180 / np.pi
-            line_angles.append(angle)
+@app.route("/")
+def landing():
+    return render_template("landing.html")
+
+@app.route("/app")
+def index():
+    return render_template("index.html")
+
+@app.route('/detect', methods=['POST'])
+def detect():
+    try:
+        data = request.get_json()
+        if not data or 'image' not in data:
+            return jsonify({'error': 'No image data provided'}), 400
         
-        # Detect regular polygons based on line patterns
-        polygon_shape = analyze_line_patterns(line_angles)
-        if polygon_shape:
-            shapes.append(polygon_shape)
-    
-    return shapes
+        # Decode base64 image
+        image_data = data['image']
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        
+        # Convert to numpy array
+        img_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            return jsonify({'error': 'Invalid image data'}), 400
+        
+        # Use the new ultra-enhanced detection method
+        result = detect_shape_ultra_enhanced(img)
+        
+        return jsonify({'result': result})
+        
+    except Exception as e:
+        return jsonify({'error': f'Detection failed: {str(e)}'}), 500
 
-def detect_shapes_by_template_matching(preprocessed):
-    """Template matching for specific shape patterns"""
-    shapes = []
-    
-    # Create templates for common shapes
-    templates = create_shape_templates()
-    
-    for template_name, template in templates.items():
-        # Multi-scale template matching
-        for scale in [0.5, 0.7, 1.0, 1.3, 1.5]:
-            scaled_template = cv2.resize(template, None, fx=scale, fy=scale)
-            
-            if scaled_template.shape[0] > preprocessed.shape[0] or scaled_template.shape[1] > preprocessed.shape[1]:
-                continue
-            
-            result = cv2.matchTemplate(preprocessed, scaled_template, cv2.TM_CCOEFF_NORMED)
-            locations = np.where(result >= 0.7)
-            
-            for pt in zip(*locations[::-1]):
-                shapes.append({
-                    'name': template_name,
-                    'confidence': float(result[pt[1], pt[0]]),
-                    'location': pt,
-                    'scale': scale,
-                    'method': 'template'
-                })
-    
-    return shapes
-
-def create_shape_templates():
-    """Create template images for common shapes"""
-    templates = {}
-    
-    # Star template
-    star_template = np.zeros((60, 60), dtype=np.uint8)
-    star_points = np.array([
-        [30, 5], [35, 20], [50, 20], [40, 30], [45, 45],
-        [30, 35], [15, 45], [20, 30], [10, 20], [25, 20]
-    ], np.int32)
-    cv2.fillPoly(star_template, [star_points], 255)
-    templates['Star'] = star_template
-    
-    # Heart template
-    heart_template = np.zeros((60, 60), dtype=np.uint8)
-    cv2.circle(heart_template, (20, 20), 12, 255, -1)
-    cv2.circle(heart_template, (40, 20), 12, 255, -1)
-    heart_bottom = np.array([[30, 50], [15, 30], [45, 30]], np.int32)
-    cv2.fillPoly(heart_template, [heart_bottom], 255)
-    templates['Heart'] = heart_template
-    
-    # Arrow template
-    arrow_template = np.zeros((60, 60), dtype=np.uint8)
-    arrow_points = np.array([
-        [10, 25], [35, 25], [35, 15], [50, 30], [35, 45], [35, 35], [10, 35]
-    ], np.int32)
-    cv2.fillPoly(arrow_template, [arrow_points], 255)
-    templates['Arrow'] = arrow_template
-    
-    return templates
+if __name__ == "__main__":
+    app.run(debug=True)
 
 def get_confidence_emoji(confidence):
     """Return emoji based on confidence level"""
@@ -603,293 +472,396 @@ def get_confidence_emoji(confidence):
     else:
         return "❓"
 
-def validate_and_cluster_shapes(all_shapes, preprocessed):
-    """Advanced shape validation and clustering to remove duplicates"""
-    if not all_shapes:
-        return []
+# Enhanced detection functions for improved accuracy
+def advanced_preprocessing_v3(gray):
+    """Ultra-enhanced preprocessing for maximum shape detection accuracy"""
+    # Stage 1: Advanced noise reduction with edge preservation
+    denoised = cv2.bilateralFilter(gray, 11, 80, 80)
     
-    # Convert shapes to consistent format
-    validated_shapes = []
+    # Stage 2: Enhanced contrast with CLAHE
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(denoised)
     
-    for shape in all_shapes:
-        if isinstance(shape, dict):
-            validated_shapes.append(shape)
-        else:
-            # Convert old format to new format
-            validated_shapes.append({
-                'name': shape,
-                'confidence': 0.8,
-                'method': 'contour'
-            })
+    # Stage 3: Multi-scale Gaussian blur for better edge detection
+    blur_small = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    blur_large = cv2.GaussianBlur(enhanced, (7, 7), 0)
+    blurred = cv2.addWeighted(blur_small, 0.7, blur_large, 0.3, 0)
     
-    # Remove duplicates and low-confidence detections
-    filtered_shapes = []
-    for shape in validated_shapes:
-        if shape['confidence'] >= 0.5:  # Minimum confidence threshold
-            filtered_shapes.append(shape)
+    # Stage 4: Advanced thresholding combination
+    # Otsu's method
+    _, thresh_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
-    # Group similar shapes and keep the highest confidence
-    final_shapes = []
-    shape_groups = {}
+    # Adaptive thresholding with multiple methods
+    thresh_adaptive_mean = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 10)
+    thresh_adaptive_gaussian = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 10)
     
-    for shape in filtered_shapes:
-        shape_name = shape['name']
-        if shape_name not in shape_groups:
-            shape_groups[shape_name] = []
-        shape_groups[shape_name].append(shape)
+    # Combine all thresholding methods
+    combined = cv2.bitwise_or(thresh_otsu, thresh_adaptive_mean)
+    combined = cv2.bitwise_or(combined, thresh_adaptive_gaussian)
     
-    # Keep best detection for each shape type
-    for shape_name, group in shape_groups.items():
-        best_shape = max(group, key=lambda x: x['confidence'])
-        final_shapes.append(best_shape)
+    # Stage 5: Advanced morphological operations
+    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     
-    return final_shapes
+    # Close gaps and remove noise
+    closed = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel_medium)
+    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_small)
+    
+    return opened
 
-def analyze_line_patterns(line_angles):
-    """Analyze line patterns to detect regular polygons"""
-    if len(line_angles) < 3:
-        return None
+def ultra_enhanced_circle_detection(preprocessed):
+    """Ultra-enhanced circle detection with multiple validation methods"""
+    # Method 1: Hough Circle Transform with multiple parameter sets
+    circles_detected = []
     
-    # Normalize angles to 0-180 range
-    normalized_angles = [angle % 180 for angle in line_angles]
+    # Try different parameter combinations for robustness
+    param_sets = [
+        {'dp': 1, 'minDist': 50, 'param1': 50, 'param2': 30, 'minRadius': 15, 'maxRadius': 300},
+        {'dp': 1, 'minDist': 40, 'param1': 60, 'param2': 25, 'minRadius': 10, 'maxRadius': 250},
+        {'dp': 2, 'minDist': 30, 'param1': 40, 'param2': 35, 'minRadius': 20, 'maxRadius': 200}
+    ]
     
-    # Count angle frequencies
-    angle_counts = Counter([round(angle / 10) * 10 for angle in normalized_angles])
+    for params in param_sets:
+        circles = cv2.HoughCircles(preprocessed, cv2.HOUGH_GRADIENT, **params)
+        if circles is not None:
+            circles_detected.extend(circles[0, :])
     
-    # Detect patterns
-    if len(angle_counts) == 2:  # Two dominant angles
-        angles = list(angle_counts.keys())
-        diff = abs(angles[0] - angles[1])
-        if 85 <= diff <= 95:  # Perpendicular lines
-            return {
-                'name': 'Rectangle',
-                'confidence': 0.85,
-                'method': 'hough_lines'
-            }
-    elif len(angle_counts) == 3:  # Three angles - triangle
+    if circles_detected:
         return {
-            'name': 'Triangle',
-            'confidence': 0.8,
-            'method': 'hough_lines'
+            'name': 'Circle',
+            'confidence': 0.95,
+            'method': 'hough_enhanced'
         }
     
-    return None
-
-def classify_ultra_advanced_shape(approx_loose, approx_tight, approx_very_tight, 
-                                 aspect_ratio, circularity, solidity, compactness,
-                                 area, contour, hu_moments):
-    """Ultra-advanced shape classification with multiple criteria"""
+    # Method 2: Enhanced contour-based circle detection
+    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Use different approximation levels for different analyses
-    vertices_loose = len(approx_loose)
-    vertices_tight = len(approx_tight)
-    vertices_very_tight = len(approx_very_tight)
-    
-    # Calculate confidence based on multiple factors
-    base_confidence = 0.7
-    
-    # High circularity indicates circular shapes
-    if circularity > 0.75:
-        if 0.85 <= aspect_ratio <= 1.15:
-            confidence = min(0.95, base_confidence + circularity * 0.3)
-            return {
-                'name': 'Circle',
-                'confidence': confidence,
-                'method': 'contour_advanced'
-            }
-        else:
-            confidence = min(0.9, base_confidence + circularity * 0.2)
-            return {
-                'name': 'Ellipse',
-                'confidence': confidence,
-                'method': 'contour_advanced'
-            }
-    
-    # Polygon classification based on vertices
-    primary_vertices = vertices_tight
-    
-    if primary_vertices == 3:
-        # Triangle analysis
-        confidence = base_confidence + (solidity * 0.2)
-        return {
-            'name': 'Triangle',
-            'confidence': min(0.95, confidence),
-            'method': 'contour_advanced'
-        }
-    
-    elif primary_vertices == 4:
-        # Quadrilateral analysis
-        if 0.95 <= aspect_ratio <= 1.05:
-            # Square vs Diamond detection
-            if is_diamond_oriented_advanced(approx_tight):
-                return {
-                    'name': 'Diamond',
-                    'confidence': base_confidence + 0.1,
-                    'method': 'contour_advanced'
-                }
-            else:
-                return {
-                    'name': 'Square',
-                    'confidence': base_confidence + 0.15,
-                    'method': 'contour_advanced'
-                }
-        elif 0.4 <= aspect_ratio <= 0.6 or 1.6 <= aspect_ratio <= 2.5:
-            # Rectangle detection
-            return {
-                'name': 'Rectangle',
-                'confidence': base_confidence + 0.1,
-                'method': 'contour_advanced'
-            }
-        else:
-            # Other quadrilaterals
-            if is_parallelogram(approx_tight):
-                if is_rhombus(approx_tight):
-                    return {
-                        'name': 'Rhombus',
-                        'confidence': base_confidence,
-                        'method': 'contour_advanced'
-                    }
-                else:
-                    return {
-                        'name': 'Parallelogram',
-                        'confidence': base_confidence,
-                        'method': 'contour_advanced'
-                    }
-            elif is_trapezoid(approx_tight):
-                return {
-                    'name': 'Trapezoid',
-                    'confidence': base_confidence,
-                    'method': 'contour_advanced'
-                }
-    
-    elif primary_vertices == 5:
-        return {
-            'name': 'Pentagon',
-            'confidence': base_confidence + 0.1,
-            'method': 'contour_advanced'
-        }
-    
-    elif primary_vertices == 6:
-        return {
-            'name': 'Hexagon',
-            'confidence': base_confidence + 0.1,
-            'method': 'contour_advanced'
-        }
-    
-    elif primary_vertices == 8:
-        return {
-            'name': 'Octagon',
-            'confidence': base_confidence + 0.1,
-            'method': 'contour_advanced'
-        }
-    
-    elif primary_vertices > 8:
-        # Complex shapes
-        if is_star_shape_advanced(contour, approx_loose):
-            return {
-                'name': 'Star',
-                'confidence': base_confidence,
-                'method': 'contour_advanced'
-            }
-        elif circularity > 0.5:
-            return {
-                'name': 'Circle',
-                'confidence': base_confidence - 0.1,
-                'method': 'contour_advanced'
-            }
-    
-    # Special shape detection using Hu moments
-    if detect_heart_by_moments(hu_moments):
-        return {
-            'name': 'Heart',
-            'confidence': base_confidence,
-            'method': 'contour_advanced'
-        }
-    
-    if detect_arrow_by_geometry(contour, aspect_ratio):
-        return {
-            'name': 'Arrow',
-            'confidence': base_confidence,
-            'method': 'contour_advanced'
-        }
-    
-    if detect_cross_by_solidity(solidity, aspect_ratio, area):
-        return {
-            'name': 'Cross',
-            'confidence': base_confidence,
-            'method': 'contour_advanced'
-        }
-    
-    if detect_crescent_shape(contour, solidity, aspect_ratio):
-        return {
-            'name': 'Crescent',
-            'confidence': base_confidence,
-            'method': 'contour_advanced'
-        }
-    
-    if detect_spiral_shape(contour, hu_moments):
-        return {
-            'name': 'Spiral',
-            'confidence': base_confidence,
-            'method': 'contour_advanced'
-        }
-    
-    return None
-
-def classify_advanced_shape(approx, aspect_ratio, circularity, solidity, area, contour):
-    """Advanced shape classification using multiple geometric features"""
-    vertices = len(approx)
-    
-    # Circle detection (high circularity)
-    if circularity > 0.7:
-        if 0.85 <= aspect_ratio <= 1.15:
-            return "Circle"
-        else:
-            return "Ellipse"
-    
-    # Polygon detection based on vertices
-    if vertices == 3:
-        return "Triangle"
-    elif vertices == 4:
-        # Distinguish between square, rectangle, and diamond
-        if 0.95 <= aspect_ratio <= 1.05:
-            # Check if it's rotated (diamond)
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 500:
+            continue
+        
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter == 0:
+            continue
+        
+        # Enhanced circularity calculation
+        circularity = 4 * math.pi * area / (perimeter * perimeter)
+        
+        # Bounding rectangle analysis
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = float(w) / h
+        
+        # Solidity analysis
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        solidity = float(area) / hull_area if hull_area > 0 else 0
+        
+        # Enhanced circle criteria with multiple validations
+        if (circularity > 0.78 and 
+            0.82 <= aspect_ratio <= 1.22 and 
+            solidity > 0.88):
+            
+            # Additional validation: check roundness using moments
             moments = cv2.moments(contour)
             if moments["m00"] != 0:
-                cx = int(moments["m10"] / moments["m00"])
-                cy = int(moments["m01"] / moments["m00"])
-                # Check orientation
-                if is_diamond_oriented(approx):
-                    return "Diamond"
-                else:
-                    return "Square"
-            return "Square"
-        else:
-            return "Rectangle"
-    elif vertices == 5:
-        return "Pentagon"
-    elif vertices == 6:
-        return "Hexagon"
-    elif vertices == 8:
-        return "Octagon"
-    elif vertices > 8:
-        # Could be a star or highly complex polygon
-        if is_star_shape(contour, approx):
-            return "Star"
-        elif circularity > 0.5:
-            return "Circle"  # Likely a circle with many approximation points
-        else:
-            return "Unknown"
-    else:
-        # Special shape detection for complex forms
-        if is_heart_shape(contour, aspect_ratio):
-            return "Heart"
-        elif is_arrow_shape(contour, aspect_ratio):
-            return "Arrow"
-        elif is_cross_shape(contour, aspect_ratio, solidity):
-            return "Cross"
-        else:
-            return "Unknown"
+                # Calculate eccentricity for additional validation
+                mu20 = moments["mu20"] / moments["m00"]
+                mu02 = moments["mu02"] / moments["m00"]
+                mu11 = moments["mu11"] / moments["m00"]
+                
+                eccentricity = ((mu20 - mu02)**2 + 4*mu11**2) / (mu20 + mu02)**2
+                
+                if eccentricity < 0.3:  # Low eccentricity indicates circular shape
+                    confidence = min(0.92, 0.65 + circularity * 0.35 + solidity * 0.1)
+                    return {
+                        'name': 'Circle',
+                        'confidence': confidence,
+                        'method': 'contour_enhanced'
+                    }
+    
+    return None
+
+def ultra_enhanced_square_detection(preprocessed):
+    """Ultra-enhanced square detection with precise geometric validation"""
+    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 500:
+            continue
+        
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter == 0:
+            continue
+        
+        # Multiple approximation levels for robustness
+        approx_tight = cv2.approxPolyDP(contour, 0.015 * perimeter, True)
+        approx_medium = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+        
+        # Must have exactly 4 vertices
+        if len(approx_tight) != 4 and len(approx_medium) != 4:
+            continue
+        
+        # Use the better approximation
+        approx = approx_tight if len(approx_tight) == 4 else approx_medium
+        
+        # Bounding rectangle analysis
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = float(w) / h
+        
+        # Enhanced square criteria: aspect ratio close to 1
+        if 0.88 <= aspect_ratio <= 1.14:
+            # Advanced side length analysis
+            points = approx.reshape(-1, 2)
+            side_lengths = []
+            
+            for i in range(4):
+                side = points[(i + 1) % 4] - points[i]
+                length = np.linalg.norm(side)
+                side_lengths.append(length)
+            
+            # Enhanced side consistency check
+            avg_length = np.mean(side_lengths)
+            side_variance = np.var(side_lengths)
+            side_consistency = 1.0 - min(1.0, side_variance / (avg_length * 0.15) ** 2)
+            
+            # Angle analysis for right angles
+            angles = []
+            for i in range(4):
+                p1 = points[i]
+                p2 = points[(i + 1) % 4]
+                p3 = points[(i + 2) % 4]
+                
+                v1 = p1 - p2
+                v2 = p3 - p2
+                
+                cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                angle = math.degrees(math.acos(np.clip(cos_angle, -1, 1)))
+                angles.append(angle)
+            
+            # Check for right angles (around 90 degrees)
+            right_angle_count = sum(1 for angle in angles if 85 <= angle <= 95)
+            
+            if side_consistency > 0.75 and right_angle_count >= 3:
+                # Calculate comprehensive confidence
+                aspect_score = 1.0 - abs(1.0 - aspect_ratio)
+                angle_score = right_angle_count / 4.0
+                confidence = min(0.96, 0.7 + aspect_score * 0.15 + side_consistency * 0.1 + angle_score * 0.01)
+                
+                return {
+                    'name': 'Square',
+                    'confidence': confidence,
+                    'method': 'contour_ultra_enhanced'
+                }
+    
+    return None
+
+def ultra_enhanced_rectangle_detection(preprocessed):
+    """Ultra-enhanced rectangle detection with advanced geometric validation"""
+    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 500:
+            continue
+        
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter == 0:
+            continue
+        
+        # Multiple approximation levels
+        approx_tight = cv2.approxPolyDP(contour, 0.015 * perimeter, True)
+        approx_medium = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+        
+        # Must have exactly 4 vertices
+        if len(approx_tight) != 4 and len(approx_medium) != 4:
+            continue
+        
+        approx = approx_tight if len(approx_tight) == 4 else approx_medium
+        
+        # Bounding rectangle analysis
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = float(w) / h
+        
+        # Rectangle criteria: NOT square (aspect ratio significantly different from 1)
+        if aspect_ratio < 0.82 or aspect_ratio > 1.22:
+            # Advanced parallel sides validation
+            points = approx.reshape(-1, 2)
+            
+            # Calculate side vectors
+            sides = []
+            for i in range(4):
+                side = points[(i + 1) % 4] - points[i]
+                sides.append(side)
+            
+            # Enhanced parallel check function
+            def are_parallel_enhanced(v1, v2, tolerance=0.25):
+                v1_norm = v1 / np.linalg.norm(v1)
+                v2_norm = v2 / np.linalg.norm(v2)
+                cross = abs(np.cross(v1_norm, v2_norm))
+                return cross < tolerance
+            
+            # Check opposite sides for parallelism
+            parallel_pairs = 0
+            if are_parallel_enhanced(sides[0], sides[2]):
+                parallel_pairs += 1
+            if are_parallel_enhanced(sides[1], sides[3]):
+                parallel_pairs += 1
+            
+            # Right angle validation
+            angles = []
+            for i in range(4):
+                p1 = points[i]
+                p2 = points[(i + 1) % 4]
+                p3 = points[(i + 2) % 4]
+                
+                v1 = p1 - p2
+                v2 = p3 - p2
+                
+                cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                angle = math.degrees(math.acos(np.clip(cos_angle, -1, 1)))
+                angles.append(angle)
+            
+            right_angle_count = sum(1 for angle in angles if 85 <= angle <= 95)
+            
+            if parallel_pairs == 2 and right_angle_count >= 3:
+                # Enhanced confidence calculation
+                rect_score = min(aspect_ratio, 1.0/aspect_ratio) if aspect_ratio > 0 else 0
+                parallel_score = parallel_pairs / 2.0
+                angle_score = right_angle_count / 4.0
+                confidence = min(0.94, 0.65 + rect_score * 0.2 + parallel_score * 0.05 + angle_score * 0.04)
+                
+                return {
+                    'name': 'Rectangle',
+                    'confidence': confidence,
+                    'method': 'contour_ultra_enhanced'
+                }
+    
+    return None
+
+def ultra_enhanced_triangle_detection(preprocessed):
+    """Ultra-enhanced triangle detection with advanced geometric validation"""
+    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 500:
+            continue
+        
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter == 0:
+            continue
+        
+        # Multiple approximation levels for robustness
+        approx_tight = cv2.approxPolyDP(contour, 0.015 * perimeter, True)
+        approx_medium = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+        approx_loose = cv2.approxPolyDP(contour, 0.035 * perimeter, True)
+        
+        # Must have exactly 3 vertices
+        triangle_approx = None
+        if len(approx_tight) == 3:
+            triangle_approx = approx_tight
+        elif len(approx_medium) == 3:
+            triangle_approx = approx_medium
+        elif len(approx_loose) == 3:
+            triangle_approx = approx_loose
+        
+        if triangle_approx is None:
+            continue
+        
+        # Enhanced solidity calculation
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        solidity = float(area) / hull_area if hull_area > 0 else 0
+        
+        # Advanced triangle validation
+        if solidity > 0.82:
+            # Additional geometric validation
+            points = triangle_approx.reshape(-1, 2)
+            
+            # Calculate side lengths
+            side_lengths = []
+            for i in range(3):
+                side = points[(i + 1) % 3] - points[i]
+                length = np.linalg.norm(side)
+                side_lengths.append(length)
+            
+            # Triangle inequality check
+            side_lengths.sort()
+            if side_lengths[0] + side_lengths[1] > side_lengths[2]:
+                # Calculate angles
+                angles = []
+                for i in range(3):
+                    p1 = points[i]
+                    p2 = points[(i + 1) % 3]
+                    p3 = points[(i + 2) % 3]
+                    
+                    v1 = p1 - p2
+                    v2 = p3 - p2
+                    
+                    cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                    angle = math.degrees(math.acos(np.clip(cos_angle, -1, 1)))
+                    angles.append(angle)
+                
+                # Check if angles sum to approximately 180 degrees
+                angle_sum = sum(angles)
+                if 175 <= angle_sum <= 185:
+                    # Enhanced confidence calculation
+                    angle_score = 1.0 - abs(180 - angle_sum) / 180.0
+                    confidence = min(0.93, 0.72 + solidity * 0.15 + angle_score * 0.06)
+                    
+                    return {
+                        'name': 'Triangle',
+                        'confidence': confidence,
+                        'method': 'contour_ultra_enhanced'
+                    }
+    
+    return None
+
+# Now update the main detect_shape function to use the improved detection methods
+def detect_shape_ultra_enhanced(img):
+    """Ultra-enhanced detection for 4 core shapes: Square, Rectangle, Circle, Triangle"""
+    output = img.copy()
+    gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+    
+    # Use advanced preprocessing
+    preprocessed = advanced_preprocessing_v3(gray)
+    
+    # Specialized ultra-enhanced detection methods for each core shape
+    detected_shapes = []
+    
+    # Priority detection order: Circle first (most distinctive), then Square, Triangle, Rectangle
+    circle_result = ultra_enhanced_circle_detection(preprocessed)
+    if circle_result:
+        detected_shapes.append(circle_result)
+    
+    square_result = ultra_enhanced_square_detection(preprocessed)
+    if square_result:
+        detected_shapes.append(square_result)
+    
+    triangle_result = ultra_enhanced_triangle_detection(preprocessed)
+    if triangle_result:
+        detected_shapes.append(triangle_result)
+    
+    rectangle_result = ultra_enhanced_rectangle_detection(preprocessed)
+    if rectangle_result:
+        detected_shapes.append(rectangle_result)
+    
+    if detected_shapes:
+        # Sort by confidence and return the best match
+        detected_shapes.sort(key=lambda x: x['confidence'], reverse=True)
+        best_shape = detected_shapes[0]
+        
+        shape_name = best_shape['name']
+        confidence = best_shape['confidence']
+        sarcasm = random.choice(sarcasm_dict.get(shape_name, sarcasm_dict["Unknown"]))
+        
+        # Add confidence indicator
+        confidence_emoji = get_confidence_emoji(confidence)
+        return f"{shape_name} {confidence_emoji} – {sarcasm}"
+    
+    return "🤖 No shapes detected – Try drawing something that actually exists! 🎨"
 
 def is_diamond_oriented(approx):
     """Check if a 4-sided polygon is oriented like a diamond"""
